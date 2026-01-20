@@ -1,0 +1,26 @@
+{
+  "name": "mc-agent",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "AI-powered Minecraft bot using local LLM inference",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:dev": "node --watch src/index.js",
+    "test:llm": "node src/ai/llm.js --test",
+    "legacy": "node app/examples/test-bot.js"
+  },
+  "keywords": ["minecraft", "ai", "bot", "mineflayer", "llm"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mineflayer": "^4.33.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "minecraft-data": "^3.69.0",
+    "node-llama-cpp": "^3.1.1",
+    "prismarine-block": "^1.22.0",
+    "prismarine-item": "^1.17.0",
+    "vec3": "^0.1.10"
+  }
+}
