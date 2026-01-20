@@ -20,6 +20,30 @@ function invCountMatching(bot, pattern) {
 }
 
 /**
+ * Normalize block type names (handle common aliases)
+ */
+function normalizeBlockType(blockType) {
+  const aliases = {
+    'coal': 'coal_ore',
+    'iron': 'iron_ore',
+    'gold': 'gold_ore',
+    'diamond': 'diamond_ore',
+    'emerald': 'emerald_ore',
+    'redstone': 'redstone_ore',
+    'lapis': 'lapis_ore',
+    'copper': 'copper_ore',
+    'wood': 'oak_log',
+    'log': 'oak_log',
+    'cobble': 'cobblestone',
+    'dirt': 'dirt',
+    'stone': 'stone',
+  };
+
+  const lower = blockType.toLowerCase();
+  return aliases[lower] || lower;
+}
+
+/**
  * Equip best tool for mining
  */
 export async function equipBestTool(bot, blockName) {
@@ -54,8 +78,9 @@ export const actions = {
       count: 'Number of blocks to mine (default 16)',
     },
     async execute(bot, params) {
-      const blockType = params.blockType;
+      const blockType = normalizeBlockType(params.blockType);
       const targetCount = parseInt(params.count, 10) || 16;
+      log.info('Mining blocks', { blockType, targetCount });
 
       let mined = 0;
 
@@ -142,7 +167,8 @@ export const actions = {
       oreType: 'Ore type (e.g., "iron_ore", "diamond_ore", "coal_ore")',
     },
     async execute(bot, params) {
-      const oreType = params.oreType;
+      const oreType = normalizeBlockType(params.oreType);
+      log.info('Finding ore', { oreType });
 
       const block = bot.findBlock({
         matching: b => b && b.name === oreType,

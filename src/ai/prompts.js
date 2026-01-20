@@ -3,39 +3,36 @@
  */
 
 export const SKILL_DESCRIPTIONS = `
-Available skills and actions:
+IMPORTANT: Use EXACT skill and action names as shown below!
 
-1. navigation
-   - goto(target): Move to a target. Target can be "player:Name", "position:x,y,z", or "entity:type"
-   - follow(player): Continuously follow a player
-   - stop(): Stop current movement
+SKILL: navigation
+  - action: goto, params: {target: "player:Name" or "position:x,y,z"}
+  - action: follow, params: {player: "PlayerName"} (just the name, no prefix!)
+  - action: stop, params: {}
 
-2. building
-   - build_hut(location): Build a wooden hut at "here" or "position:x,y,z"
-   - place_block(position, blockType): Place a block at position
-   - break_block(position): Break the block at position
+SKILL: building (ONLY for construction - NOT for gathering resources!)
+  - action: build_hut, params: {location: "here" or "position:x,y,z"}
+  - action: place_block, params: {position: "position:x,y,z", blockType: "oak_planks"}
+  - action: break_block, params: {position: "position:x,y,z"}
 
-3. inventory
-   - open_chest(position): Open a chest at "nearest" or "position:x,y,z"
-   - deposit(items): Deposit items into open chest. Items: "all" or "item:count,item:count"
-   - withdraw(items): Withdraw items from chest
-   - equip(item): Equip an item (armor or held)
-   - drop(items): Drop items
+SKILL: inventory
+  - action: open_chest, params: {position: "nearest" or "position:x,y,z"}
+  - action: deposit, params: {items: "all" or "item_name:count"}
+  - action: withdraw, params: {items: "item_name:count"}
+  - action: equip, params: {item: "item_name"}
+  - action: drop, params: {items: "all" or "item_name:count"}
 
-4. mining
-   - mine(blockType, count): Find and mine blocks of a type
-   - gather_wood(count): Gather wood logs
+SKILL: mining (for gathering resources - wood, ore, stone!)
+  - action: mine, params: {blockType: "stone" or "coal_ore" or "iron_ore" or "diamond_ore", count: 16}
+  - action: gather_wood, params: {count: 16}
+  - action: find_ore, params: {oreType: "iron_ore" or "coal_ore" or "diamond_ore"}
 
-5. combat
-   - attack(target): Attack a target entity
-   - flee(): Run away from danger
-   - defend(): Attack nearest hostile mob
+SKILL: combat
+  - action: attack, params: {target: "player:Name" or "entity:zombie" or "nearest_hostile"}
+  - action: defend, params: {}
+  - action: flee, params: {}
 
-6. utility
-   - wait(): Do nothing this turn
-   - say(message): Say something in chat (max 100 chars)
-   - remember(fact): Store a fact in long-term memory
-   - save_location(name): Save current position with a name
+Block name examples: stone, cobblestone, oak_log, oak_planks, coal_ore, iron_ore, diamond_ore, dirt, sand
 `;
 
 /**

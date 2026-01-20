@@ -147,14 +147,42 @@ export function hutPlan(origin) {
 }
 
 /**
+ * Check if a position is on the edge of the roof (adjacent to a wall)
+ */
+function isEdgeBlock(pos, roofY, plan) {
+  // A block is an edge if it's directly above a wall block
+  const wallPositions = plan
+    .filter(p => p.pos.y === roofY - 1 && p.type !== 'air')
+    .map(p => `${p.pos.x},${p.pos.z}`);
+
+  return wallPositions.includes(`${pos.x},${pos.z}`);
+}
+
+/**
  * Build from a block plan
+ * Sorts blocks to ensure proper support order (bottom to top, edges first)
  */
 async function buildFromPlan(bot, plan, originY) {
   const floor = plan.filter(p => p.pos.y === originY && p.type !== 'air');
-  const walls = plan.filter(p => p.pos.y > originY && p.pos.y <= originY + 3);
-  const roof = plan.filter(p => p.pos.y === originY + 4);
-  const rest = plan.filter(p => !floor.includes(p) && !walls.includes(p) && !roof.includes(p));
-  const stages = [floor, walls, roof, rest];
+  const walls = plan.filter(p => p.pos.y > originY && p.pos.y <= originY + 3 && p.type !== 'air');
+  const roof = plan.filter(p => p.pos.y === originY + 4 && p.type !== 'air');
+  const airBlocks = plan.filter(p => p.type === 'air');
+  const rest = plan.filter(p => !floor.includes(p) && !walls.includes(p) && !roof.includes(p) && p.type !== 'air');
+
+  // Sort walls by Y (bottom to top) to ensure lower blocks support upper ones
+  walls.sort((a, b) => a.pos.y - b.pos.y);
+
+  // Sort roof to start from edges (which have wall support) and spiral inward
+  roof.sort((a, b) => {
+    const aIsEdge = isEdgeBlock(a.pos, originY + 4, plan);
+    const bIsEdge = isEdgeBlock(b.pos, originY + 4, plan);
+    if (aIsEdge && !bIsEdge) return -1;
+    if (!aIsEdge && bIsEdge) return 1;
+    return 0;
+  });
+
+  // Process air blocks (door) first, then build floor, walls, roof
+  const stages = [airBlocks, floor, walls, roof, rest];
 
   let placed = 0;
   let failed = 0;

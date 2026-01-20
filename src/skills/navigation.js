@@ -94,7 +94,12 @@ export const actions = {
       player: 'Player name to follow',
     },
     async execute(bot, params) {
-      const playerName = params.player;
+      // Strip "player:" prefix if LLM included it
+      let playerName = params.player;
+      if (playerName.startsWith('player:')) {
+        playerName = playerName.slice(7);
+      }
+
       const player = bot.players[playerName];
       if (!player?.entity) {
         throw new Error(`Cannot see player: ${playerName}`);

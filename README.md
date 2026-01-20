@@ -1,6 +1,10 @@
 # MC-Agent: AI-Powered Minecraft Bot
 
-An AI Minecraft bot using Mineflayer and local LLM inference via llama.cpp on GPU (RTX 4060).
+A proof-of-concept AI Minecraft bot using Mineflayer and local LLM inference via llama.cpp on GPU (RTX 4060).
+
+Pretty bare-bones.
+
+TODO: Add visual inspection feedback loop (e.g. why can't bot move? Choose correct tool for block, etc.,)
 
 ## Prerequisites
 
