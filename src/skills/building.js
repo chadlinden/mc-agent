@@ -13,6 +13,16 @@ function sleep(ms) {
 }
 
 /**
+ * Wrap an async operation with a timeout
+ */
+function withTimeout(promise, ms, errorMsg = 'Operation timed out') {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms)),
+  ]);
+}
+
+/**
  * Find solid ground below a position
  */
 export async function findGround(bot, pos, maxDrop = 12) {
@@ -47,9 +57,9 @@ async function digIfNeeded(bot, pos) {
 }
 
 /**
- * Place a block at position
+ * Place a block at position with timeout protection
  */
-async function placeAt(bot, targetPos) {
+async function placeAt(bot, targetPos, timeoutMs = 8000) {
   const cur = bot.blockAt(targetPos);
   if (cur && cur.name !== 'air') return true;
 
@@ -66,9 +76,27 @@ async function placeAt(bot, targetPos) {
     const refPos = targetPos.plus(off);
     const refBlock = bot.blockAt(refPos);
     if (refBlock && refBlock.name !== 'air') {
-      await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 2));
-      await bot.placeBlock(refBlock, off.scaled(-1));
-      return true;
+      try {
+        await withTimeout(
+          bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 2)),
+          timeoutMs,
+          `Pathfinding to ${targetPos} timed out`
+        );
+      } catch (err) {
+        log.warn('Pathfinding failed, trying to place anyway', { error: err.message });
+      }
+
+      try {
+        await withTimeout(
+          bot.placeBlock(refBlock, off.scaled(-1)),
+          timeoutMs,
+          `Placing block at ${targetPos} timed out`
+        );
+        return true;
+      } catch (err) {
+        log.warn('Block placement failed', { pos: targetPos, error: err.message });
+        // Continue trying other reference blocks
+      }
     }
   }
   return false;
@@ -128,10 +156,17 @@ async function buildFromPlan(bot, plan, originY) {
   const rest = plan.filter(p => !floor.includes(p) && !walls.includes(p) && !roof.includes(p));
   const stages = [floor, walls, roof, rest];
 
+  let placed = 0;
+  let failed = 0;
+
   for (const stage of stages) {
     for (const step of stage) {
       if (step.type === 'air') {
-        await digIfNeeded(bot, step.pos);
+        try {
+          await digIfNeeded(bot, step.pos);
+        } catch (err) {
+          log.warn('Failed to dig block', { pos: step.pos, error: err.message });
+        }
         continue;
       }
 
@@ -139,25 +174,49 @@ async function buildFromPlan(bot, plan, originY) {
       const ok = await equipItem(bot, itemName);
       if (!ok) {
         if (step.type === 'torch') continue;
-        throw new Error(`Missing ${itemName}`);
+        log.warn('Missing material, skipping', { item: itemName });
+        failed++;
+        continue;
       }
 
       const cur = bot.blockAt(step.pos);
-      if (cur && cur.name === step.type) continue;
+      if (cur && cur.name === step.type) {
+        placed++;
+        continue;
+      }
 
       if (cur && cur.name !== 'air' && cur.name !== step.type) {
-        await digIfNeeded(bot, step.pos);
+        try {
+          await digIfNeeded(bot, step.pos);
+        } catch (err) {
+          log.warn('Failed to clear block', { pos: step.pos, error: err.message });
+        }
       }
 
-      try {
-        await placeAt(bot, step.pos);
-      } catch {
-        await sleep(150);
-        await placeAt(bot, step.pos);
+      let success = false;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          success = await placeAt(bot, step.pos);
+          if (success) break;
+        } catch (err) {
+          log.warn('Place attempt failed', { pos: step.pos, attempt, error: err.message });
+          await sleep(200);
+        }
       }
-      await sleep(60);
+
+      if (success) {
+        placed++;
+      } else {
+        failed++;
+        log.warn('Could not place block after retries', { pos: step.pos, type: step.type });
+      }
+
+      await sleep(80);
     }
   }
+
+  log.info('Build complete', { placed, failed });
+  return { placed, failed };
 }
 
 export const actions = {
@@ -182,9 +241,12 @@ export const actions = {
       log.info('Building hut at', { position: o });
 
       const plan = hutPlan(o);
-      await buildFromPlan(bot, plan, o.y);
+      const result = await buildFromPlan(bot, plan, o.y);
 
-      return `Hut built at ${o.x}, ${o.y}, ${o.z}`;
+      if (result.failed > 0) {
+        return `Hut partially built at ${o.x}, ${o.y}, ${o.z} (${result.placed} placed, ${result.failed} failed)`;
+      }
+      return `Hut built at ${o.x}, ${o.y}, ${o.z} (${result.placed} blocks placed)`;
     },
   },
 

@@ -7,12 +7,12 @@ node_modules/
 # Models (large files)
 models/*.gguf
 models/*.bin
-models/*
 
 # Data
 data/
 
 # Logs
+logs/*.log
 *.log
 
 # IDE

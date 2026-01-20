@@ -28,5 +28,13 @@ export default {
   },
 
   // Logging
+  logging: {
+    level: process.env.LOG_LEVEL || 'info',
+    toConsole: process.env.LOG_TO_CONSOLE !== 'false',
+    toFile: process.env.LOG_TO_FILE === 'true',
+    dir: process.env.LOG_DIR || './logs',
+  },
+
+  // Legacy (for backwards compat)
   logLevel: process.env.LOG_LEVEL || 'info',
 };

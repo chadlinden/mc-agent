@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import config from '../../config/bot-config.js';
 
 const LEVELS = {
@@ -7,7 +9,36 @@ const LEVELS = {
   error: 3,
 };
 
-const currentLevel = LEVELS[config.logLevel] ?? LEVELS.info;
+const currentLevel = LEVELS[config.logging?.level ?? config.logLevel] ?? LEVELS.info;
+const toConsole = config.logging?.toConsole ?? true;
+const toFile = config.logging?.toFile ?? false;
+const logDir = config.logging?.dir ?? './logs';
+
+// Ensure log directory exists
+if (toFile) {
+  const absoluteLogDir = path.resolve(logDir);
+  if (!fs.existsSync(absoluteLogDir)) {
+    fs.mkdirSync(absoluteLogDir, { recursive: true });
+  }
+}
+
+// Generate log filename with date
+const getLogFilePath = () => {
+  const date = new Date().toISOString().split('T')[0];
+  return path.resolve(logDir, `bot-${date}.log`);
+};
+
+// File write stream (lazy initialized)
+let fileStream = null;
+
+const getFileStream = () => {
+  if (!toFile) return null;
+
+  if (!fileStream) {
+    fileStream = fs.createWriteStream(getLogFilePath(), { flags: 'a' });
+  }
+  return fileStream;
+};
 
 const timestamp = () => new Date().toISOString();
 
@@ -19,25 +50,46 @@ const formatMessage = (level, module, message, data) => {
   return base;
 };
 
+const writeLog = (formatted, consoleMethod) => {
+  if (toConsole) {
+    consoleMethod(formatted);
+  }
+
+  if (toFile) {
+    const stream = getFileStream();
+    if (stream) {
+      stream.write(formatted + '\n');
+    }
+  }
+};
+
 export const createLogger = (module) => ({
   debug: (message, data) => {
     if (currentLevel <= LEVELS.debug) {
-      console.log(formatMessage('debug', module, message, data));
+      writeLog(formatMessage('debug', module, message, data), console.log);
     }
   },
   info: (message, data) => {
     if (currentLevel <= LEVELS.info) {
-      console.log(formatMessage('info', module, message, data));
+      writeLog(formatMessage('info', module, message, data), console.log);
     }
   },
   warn: (message, data) => {
     if (currentLevel <= LEVELS.warn) {
-      console.warn(formatMessage('warn', module, message, data));
+      writeLog(formatMessage('warn', module, message, data), console.warn);
     }
   },
   error: (message, data) => {
     if (currentLevel <= LEVELS.error) {
-      console.error(formatMessage('error', module, message, data));
+      writeLog(formatMessage('error', module, message, data), console.error);
     }
   },
 });
+
+// Graceful shutdown - close file stream
+export const closeLogger = () => {
+  if (fileStream) {
+    fileStream.end();
+    fileStream = null;
+  }
+};

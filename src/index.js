@@ -7,7 +7,7 @@
 
 import 'dotenv/config';
 
-import { createLogger } from './utils/logger.js';
+import { createLogger, closeLogger } from './utils/logger.js';
 import { createBot } from './bot/bot.js';
 import { setupEventHandlers } from './bot/events.js';
 import { tryDirectCommand } from './bot/commands.js';
@@ -69,6 +69,7 @@ async function main() {
     await shutdownLLM();
 
     log.info('Shutdown complete');
+    closeLogger();
     process.exit(0);
   };
 
