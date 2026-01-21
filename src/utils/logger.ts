@@ -10,6 +10,24 @@ const LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
+// ANSI color codes for terminal output
+const COLORS = {
+  reset: '\x1b[0m',
+  dim: '\x1b[2m',
+  bold: '\x1b[1m',
+
+  // Level colors
+  debug: '\x1b[36m',    // Cyan
+  info: '\x1b[32m',     // Green
+  warn: '\x1b[33m',     // Yellow
+  error: '\x1b[31m',    // Red
+
+  // Component colors
+  timestamp: '\x1b[90m', // Gray
+  module: '\x1b[35m',    // Magenta
+  data: '\x1b[90m',      // Gray
+};
+
 const currentLevel = LEVELS[config.logging.level as LogLevel] ?? LEVELS.info;
 const toConsole = config.logging.toConsole;
 const toFile = config.logging.toFile;
@@ -43,7 +61,8 @@ const getFileStream = (): fs.WriteStream | null => {
 
 const timestamp = (): string => new Date().toISOString();
 
-const formatMessage = (level: string, module: string, message: string, data?: unknown): string => {
+// Plain format for file output (no colors)
+const formatPlain = (level: string, module: string, message: string, data?: unknown): string => {
   const base = `[${timestamp()}] [${level.toUpperCase()}] [${module}] ${message}`;
   if (data !== undefined) {
     return `${base} ${JSON.stringify(data)}`;
@@ -51,15 +70,31 @@ const formatMessage = (level: string, module: string, message: string, data?: un
   return base;
 };
 
-const writeLog = (formatted: string, consoleMethod: (msg: string) => void): void => {
+// Colorized format for console output
+const formatColored = (level: LogLevel, module: string, message: string, data?: unknown): string => {
+  const levelColor = COLORS[level];
+  const ts = `${COLORS.timestamp}${timestamp()}${COLORS.reset}`;
+  const lvl = `${levelColor}${COLORS.bold}${level.toUpperCase().padEnd(5)}${COLORS.reset}`;
+  const mod = `${COLORS.module}${module}${COLORS.reset}`;
+
+  let base = `${ts} ${lvl} ${COLORS.dim}[${COLORS.reset}${mod}${COLORS.dim}]${COLORS.reset} ${message}`;
+
+  if (data !== undefined) {
+    const dataStr = JSON.stringify(data, null, 2);
+    base += ` ${COLORS.data}${dataStr}${COLORS.reset}`;
+  }
+  return base;
+};
+
+const writeLog = (level: LogLevel, module: string, message: string, data: unknown, consoleMethod: (msg: string) => void): void => {
   if (toConsole) {
-    consoleMethod(formatted);
+    consoleMethod(formatColored(level, module, message, data));
   }
 
   if (toFile) {
     const stream = getFileStream();
     if (stream) {
-      stream.write(formatted + '\n');
+      stream.write(formatPlain(level, module, message, data) + '\n');
     }
   }
 };
@@ -67,22 +102,22 @@ const writeLog = (formatted: string, consoleMethod: (msg: string) => void): void
 export const createLogger = (module: string): Logger => ({
   debug: (message: string, data?: unknown): void => {
     if (currentLevel <= LEVELS.debug) {
-      writeLog(formatMessage('debug', module, message, data), console.log);
+      writeLog('debug', module, message, data, console.log);
     }
   },
   info: (message: string, data?: unknown): void => {
     if (currentLevel <= LEVELS.info) {
-      writeLog(formatMessage('info', module, message, data), console.log);
+      writeLog('info', module, message, data, console.log);
     }
   },
   warn: (message: string, data?: unknown): void => {
     if (currentLevel <= LEVELS.warn) {
-      writeLog(formatMessage('warn', module, message, data), console.warn);
+      writeLog('warn', module, message, data, console.warn);
     }
   },
   error: (message: string, data?: unknown): void => {
     if (currentLevel <= LEVELS.error) {
-      writeLog(formatMessage('error', module, message, data), console.error);
+      writeLog('error', module, message, data, console.error);
     }
   },
 });

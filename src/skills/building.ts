@@ -1,10 +1,9 @@
 import type { Bot } from 'mineflayer';
 import type { Vec3 as Vec3Type } from 'vec3';
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
 import vec3Pkg from 'vec3';
 const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
 import type { SkillModule } from '../types/index.js';
 
 const log = createLogger('skill:building');
@@ -64,7 +63,8 @@ export async function equipItem(bot: Bot, name: string): Promise<boolean> {
 async function digIfNeeded(bot: Bot, pos: Vec3Type): Promise<void> {
   const b = bot.blockAt(pos);
   if (b && b.name !== 'air') {
-    await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 2));
+    const nav = getNavigationController(bot);
+    await nav.goto(new Vec3(pos.x, pos.y, pos.z), { range: 2 });
     await bot.dig(b);
   }
 }
@@ -90,8 +90,9 @@ async function placeAt(bot: Bot, targetPos: Vec3Type, timeoutMs: number = 8000):
     const refBlock = bot.blockAt(refPos);
     if (refBlock && refBlock.name !== 'air') {
       try {
+        const nav = getNavigationController(bot);
         await withTimeout(
-          bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 2)),
+          nav.goto(new Vec3(targetPos.x, targetPos.y, targetPos.z), { range: 2 }),
           timeoutMs,
           `Pathfinding to ${targetPos} timed out`
         );

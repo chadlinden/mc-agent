@@ -64,13 +64,15 @@ export async function executeAction(
   }
 
   try {
-    log.info('Executing action', { skillName, actionName, params });
+    log.info(`🚀 Starting ${skillName}.${actionName}()`, params);
+    const startTime = Date.now();
     const result = await action.execute(bot, params);
-    log.info('Action completed', { skillName, actionName, result });
+    const duration = Date.now() - startTime;
+    log.info(`✅ Completed ${skillName}.${actionName}() in ${duration}ms: ${result}`);
     return { success: true, result };
   } catch (err) {
     const error = err as Error;
-    log.error('Action failed', { skillName, actionName, error: error.message });
+    log.error(`💥 Failed ${skillName}.${actionName}(): ${error.message}`);
     return { success: false, error: error.message };
   }
 }

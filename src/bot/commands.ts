@@ -1,6 +1,7 @@
 import type { Bot } from 'mineflayer';
 import { createLogger } from '../utils/logger.js';
 import type { DecisionEngine } from '../ai/decision-engine.js';
+import { getNavigationController } from './navigation-controller.js';
 
 const log = createLogger('commands');
 
@@ -17,7 +18,8 @@ interface DirectCommands {
 const DIRECT_COMMANDS: DirectCommands = {
   // Emergency stop
   'stop': async (bot: Bot, decisionEngine: DecisionEngine): Promise<boolean> => {
-    bot.pathfinder.setGoal(null);
+    const nav = getNavigationController(bot);
+    nav.stop();
     decisionEngine.stopAutonomousLoop();
     bot.chat('Stopped all actions.');
     return true;

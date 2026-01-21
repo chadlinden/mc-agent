@@ -1,11 +1,10 @@
 import type { Bot } from 'mineflayer';
 import type { Entity } from 'prismarine-entity';
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
 import vec3Pkg from 'vec3';
 const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
 import type { SkillModule } from '../types/index.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
 
 const log = createLogger('skill:navigation');
 
@@ -69,34 +68,23 @@ export const actions: SkillModule['actions'] = {
       target: 'Target: "player:Name", "position:x,y,z", or "entity:type"',
     },
     async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const nav = getNavigationController(bot);
+      log.info(`🎯 Parsing target: "${params.target}"`);
       const target = parseTarget(bot, params.target as string);
       if (!target) {
         throw new Error(`Invalid or not found target: ${params.target}`);
       }
 
-      let goal;
+      // Use different navigation methods based on target type:
+      // - Entities: Use gotoEntity with GoalFollow to dynamically track position (including y)
+      // - Positions: Use goto with GoalNear for static coordinates
       if (target.type === 'entity' && target.entity) {
-        goal = new goals.GoalNear(
-          target.entity.position.x,
-          target.entity.position.y,
-          target.entity.position.z,
-          2
-        );
-        log.info('Going to entity', { name: target.name });
+        return nav.gotoEntity(target.entity, { range: 2, canBreak: true });
       } else if (target.position) {
-        goal = new goals.GoalNear(
-          target.position.x,
-          target.position.y,
-          target.position.z,
-          1
-        );
-        log.info('Going to position', { position: target.position });
+        return nav.goto(target.position, { range: 1 });
       } else {
         throw new Error('Invalid target');
       }
-
-      await bot.pathfinder.goto(goal);
-      return 'Arrived at destination';
     },
   },
 
@@ -106,19 +94,21 @@ export const actions: SkillModule['actions'] = {
       player: 'Player name to follow',
     },
     async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const nav = getNavigationController(bot);
+
       // Strip "player:" prefix if LLM included it
       let playerName = params.player as string;
       if (playerName.startsWith('player:')) {
         playerName = playerName.slice(7);
       }
+      log.info(`👤 Looking for player "${playerName}"...`);
 
       const player = bot.players[playerName];
       if (!player?.entity) {
         throw new Error(`Cannot see player: ${playerName}`);
       }
 
-      bot.pathfinder.setGoal(new goals.GoalFollow(player.entity, 2), true);
-      log.info('Following player', { player: playerName });
+      nav.follow(player.entity, 2);
       return `Following ${playerName}`;
     },
   },
@@ -127,8 +117,8 @@ export const actions: SkillModule['actions'] = {
     description: 'Stop current movement',
     params: {},
     async execute(bot: Bot): Promise<string> {
-      bot.pathfinder.setGoal(null);
-      log.info('Stopped movement');
+      const nav = getNavigationController(bot);
+      nav.stop();
       return 'Stopped';
     },
   },

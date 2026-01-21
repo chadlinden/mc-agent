@@ -82,7 +82,7 @@ Example responses:
 Player asks you to come:
 {
   "thought": "Player wants me to come to them",
-  "speech": "On my way!",
+  "speech": "Yo ho ho, I'm on my way!",
   "action": { "skill": "navigation", "action": "goto", "params": { "target": "player:Steve" } }
 }
 

@@ -109,7 +109,7 @@ export interface LLMAction {
 export interface LLMResponse {
   thought?: string;
   speech?: string;
-  actions?: LLMAction[];
+  action?: LLMAction;
 }
 
 // Short-term memory types

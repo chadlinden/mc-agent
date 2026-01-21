@@ -6,7 +6,7 @@
   "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts",
+    "start": "tsc && tsx src/index.ts",
     "start:dev": "tsx --watch src/index.ts",
     "start:prod": "node dist/src/index.js",
     "test:llm": "tsx src/ai/llm.ts --test",

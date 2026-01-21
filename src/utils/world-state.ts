@@ -106,7 +106,7 @@ export const getTimeOfDay = (bot: Bot): string => {
  */
 export const getWeather = (bot: Bot): string => {
   if (bot.thunderState > 0) return 'thunderstorm';
-  if (bot.rainState > 0) return 'rain';
+  if (bot.isRaining) return 'rain';
   return 'clear';
 };
 

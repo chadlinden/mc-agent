@@ -1,9 +1,9 @@
 import mineflayer, { Bot, BotOptions } from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
-const { pathfinder, Movements } = pathfinderPkg;
-import minecraftData from 'minecraft-data';
+const { pathfinder } = pathfinderPkg;
 import config from '../../config/bot-config.js';
 import { createLogger } from '../utils/logger.js';
+import { initializeNavigation, getNavigationController } from './navigation-controller.js';
 
 const log = createLogger('bot');
 
@@ -37,10 +37,30 @@ export function createBot(testableConfig?: Partial<BotOptions>): Bot {
 
 /**
  * Initialize pathfinder movements after spawn
+ * Now uses the NavigationController for centralized navigation management
  */
 export function initializePathfinder(bot: Bot): void {
-  const mcData = minecraftData(bot.version);
-  const movements = new Movements(bot, mcData);
-  bot.pathfinder.setMovements(movements);
-  log.info('Pathfinder initialized');
+  const nav = initializeNavigation(bot);
+
+  // Configure default navigation behavior
+  nav.configure({
+    canDig: true,
+    allowSprinting: true,
+    allowParkour: true,
+    maxDropDown: 4,
+  });
+
+  // Custom block handlers/rules
+  nav.onBlock('*leaves', () => ({
+    action: 'break',
+    toolType: '_axe',           // Prefer axes
+    avoidTools: ['_sword'],     // Never use swords
+  }));
+  nav.onBlock('oak_door', () => 'allow');
+  nav.onBlock('water', () => 'avoid');
+
+  log.info('Pathfinder initialized with NavigationController');
 }
+
+// Re-export for convenience
+export { getNavigationController };

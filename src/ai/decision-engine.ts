@@ -55,26 +55,40 @@ export class DecisionEngine {
     this.shortTerm.addChat(username, message, false);
 
     try {
-      const { messages } = this.context.buildChatContext(username, message);
+      log.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      log.info(`📨 CHAT FROM [${username}]: "${message}"`);
+      log.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      log.info('Processing chat', { username, message });
+      const { messages, worldState } = this.context.buildChatContext(username, message);
+      log.info('🌍 World state:', worldState);
+
+      log.info('🤔 Thinking...');
       const response = await chat(messages);
-      log.debug('LLM response', { response });
+      log.info('📝 Raw LLM response:', { response });
 
       const parsed = parseJsonResponse(response);
       if (parsed) {
+        if (parsed.thought) {
+          log.info('💭 THOUGHT: ' + parsed.thought);
+        }
+        if (parsed.speech) {
+          log.info('💬 WILL SAY: "' + parsed.speech + '"');
+        }
+        if (parsed.action) {
+          log.info('🎯 WILL DO:', parsed.action);
+        }
         await this.executeResponse(parsed);
       } else {
-        log.warn('Could not parse LLM response as JSON');
-        // Fall back to saying something generic
+        log.warn('⚠️ Could not parse LLM response as JSON');
         this.bot.chat("I'm not sure how to respond to that.");
       }
     } catch (err) {
       const error = err as Error;
-      log.error('Error handling chat', { error: error.message });
+      log.error('❌ Error handling chat', { error: error.message });
       this.bot.chat("Sorry, I encountered an error.");
     } finally {
       this.isProcessing = false;
+      log.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     }
   }
 
@@ -95,27 +109,40 @@ export class DecisionEngine {
     this.isProcessing = true;
 
     try {
-      const { messages } = this.context.buildAutonomousContext();
+      log.info('┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄');
+      log.info('🔄 AUTONOMOUS TICK - Deciding what to do...');
+      log.info('┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄');
 
-      log.debug('Making autonomous decision');
+      const { messages, worldState } = this.context.buildAutonomousContext();
+      log.info('🌍 World state:', worldState);
+
+      log.info('🤔 Thinking...');
       const response = await chat(messages);
-      log.debug('LLM response', { response });
+      log.info('📝 Raw LLM response:', { response });
 
       const parsed = parseJsonResponse(response);
       if (parsed) {
+        if (parsed.thought) {
+          log.info('💭 THOUGHT: ' + parsed.thought);
+        }
         // Check if it's a wait action
         if (parsed.action?.action === 'wait' || !parsed.action) {
-          log.debug('AI decided to wait');
+          log.info('⏸️ Decided to wait/idle');
         } else {
+          if (parsed.speech) {
+            log.info('💬 WILL SAY: "' + parsed.speech + '"');
+          }
+          log.info('🎯 WILL DO:', parsed.action);
           await this.executeResponse(parsed);
         }
       }
     } catch (err) {
       const error = err as Error;
-      log.error('Error in autonomous decision', { error: error.message });
+      log.error('❌ Error in autonomous decision', { error: error.message });
     } finally {
       this.isProcessing = false;
       this.lastActionTime = Date.now();
+      log.info('┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n');
     }
   }
 
@@ -123,11 +150,10 @@ export class DecisionEngine {
    * Execute the parsed LLM response
    */
   async executeResponse(parsed: LLMResponse): Promise<void> {
-    log.debug('Executing response', { parsed });
-
     // Handle speech
     if (parsed.speech) {
       const speech = parsed.speech.slice(0, config.bot.maxChatResponseLength);
+      log.info(`🗣️ Saying in chat: "${speech}"`);
       this.bot.chat(speech);
       this.shortTerm.addChat(this.bot.username, speech, true);
     }
@@ -138,17 +164,21 @@ export class DecisionEngine {
 
       // Handle utility actions
       if (skill === 'utility' && action) {
+        log.info(`🔧 Executing utility action: ${action}`, params);
         await this.handleUtilityAction(action, (params || {}) as ActionParams);
         return;
       }
 
       // Execute skill action
       if (skill && action) {
+        log.info(`⚡ Executing: ${skill}.${action}()`, params);
         const result = await executeAction(this.bot, skill, action, params || {});
         this.shortTerm.addAction(skill, action, params || {}, result.success ? (result.result || '') : (result.error || ''));
 
-        if (!result.success) {
-          log.warn('Action failed', { skill, action, error: result.error });
+        if (result.success) {
+          log.info(`✅ Action succeeded: ${result.result}`);
+        } else {
+          log.warn(`❌ Action failed: ${result.error}`);
         }
       }
     }

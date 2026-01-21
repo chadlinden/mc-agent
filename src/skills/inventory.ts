@@ -1,12 +1,11 @@
 import type { Bot } from 'mineflayer';
 import type { Block } from 'prismarine-block';
 import type { Chest } from 'mineflayer';
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
 import vec3Pkg from 'vec3';
 const { Vec3 } = vec3Pkg;
 import minecraftData, { IndexedData } from 'minecraft-data';
 import { createLogger } from '../utils/logger.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
 import type { SkillModule } from '../types/index.js';
 
 const log = createLogger('skill:inventory');
@@ -102,12 +101,8 @@ export const actions: SkillModule['actions'] = {
         throw new Error('Invalid position format');
       }
 
-      await bot.pathfinder.goto(new goals.GoalNear(
-        chestBlock.position.x,
-        chestBlock.position.y,
-        chestBlock.position.z,
-        2
-      ));
+      const nav = getNavigationController(bot);
+      await nav.goto(new Vec3(chestBlock.position.x, chestBlock.position.y, chestBlock.position.z), { range: 2 });
 
       // Store chest window for later operations
       extBot._openChest = await bot.openChest(chestBlock);

@@ -1,8 +1,9 @@
 import type { Bot } from 'mineflayer';
 import type { Block } from 'prismarine-block';
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
+import vec3Pkg from 'vec3';
+const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
 import type { SkillModule } from '../types/index.js';
 
 const log = createLogger('skill:mining');
@@ -99,12 +100,8 @@ export const actions: SkillModule['actions'] = {
           break;
         }
 
-        await bot.pathfinder.goto(new goals.GoalNear(
-          block.position.x,
-          block.position.y,
-          block.position.z,
-          2
-        ));
+        const nav = getNavigationController(bot);
+        await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 2 });
 
         await equipBestTool(bot, blockType);
 
@@ -142,12 +139,8 @@ export const actions: SkillModule['actions'] = {
           break;
         }
 
-        await bot.pathfinder.goto(new goals.GoalNear(
-          block.position.x,
-          block.position.y,
-          block.position.z,
-          2
-        ));
+        const nav = getNavigationController(bot);
+        await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 2 });
 
         await equipBestTool(bot, '_log');
 
@@ -183,12 +176,8 @@ export const actions: SkillModule['actions'] = {
         throw new Error(`No ${oreType} found nearby`);
       }
 
-      await bot.pathfinder.goto(new goals.GoalNear(
-        block.position.x,
-        block.position.y,
-        block.position.z,
-        3
-      ));
+      const nav = getNavigationController(bot);
+      await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 3 });
 
       return `Found ${oreType} at ${block.position.x}, ${block.position.y}, ${block.position.z}`;
     },
