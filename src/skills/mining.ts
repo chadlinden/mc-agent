@@ -101,7 +101,8 @@ export const actions: SkillModule['actions'] = {
         }
 
         const nav = getNavigationController(bot);
-        await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 2 });
+        // Use gotoBlock to ensure we aren't standing in the block we want to mine
+        await nav.gotoBlock(new Vec3(block.position.x, block.position.y, block.position.z), { range: 4 });
 
         await equipBestTool(bot, blockType);
 
@@ -140,7 +141,8 @@ export const actions: SkillModule['actions'] = {
         }
 
         const nav = getNavigationController(bot);
-        await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 2 });
+        // Use gotoBlock to ensure we aren't standing in the block we want to mine
+        await nav.gotoBlock(new Vec3(block.position.x, block.position.y, block.position.z), { range: 4 });
 
         await equipBestTool(bot, '_log');
 
@@ -177,7 +179,8 @@ export const actions: SkillModule['actions'] = {
       }
 
       const nav = getNavigationController(bot);
-      await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 3 });
+      // Use gotoBlock to ensure we aren't standing in the block we found
+      await nav.gotoBlock(new Vec3(block.position.x, block.position.y, block.position.z), { range: 4 });
 
       return `Found ${oreType} at ${block.position.x}, ${block.position.y}, ${block.position.z}`;
     },

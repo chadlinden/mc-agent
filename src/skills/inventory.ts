@@ -102,7 +102,8 @@ export const actions: SkillModule['actions'] = {
       }
 
       const nav = getNavigationController(bot);
-      await nav.goto(new Vec3(chestBlock.position.x, chestBlock.position.y, chestBlock.position.z), { range: 2 });
+      // Use gotoBlock to ensure we aren't standing in the chest we want to open
+      await nav.gotoBlock(new Vec3(chestBlock.position.x, chestBlock.position.y, chestBlock.position.z), { range: 4 });
 
       // Store chest window for later operations
       extBot._openChest = await bot.openChest(chestBlock);

@@ -149,7 +149,7 @@ export class DecisionEngine {
   /**
    * Execute the parsed LLM response
    */
-  async executeResponse(parsed: LLMResponse): Promise<void> {
+  async wexecuteResponse(parsed: LLMResponse): Promise<void> {
     // Handle speech
     if (parsed.speech) {
       const speech = parsed.speech.slice(0, config.bot.maxChatResponseLength);

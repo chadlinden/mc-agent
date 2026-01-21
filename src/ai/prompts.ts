@@ -28,6 +28,8 @@ IMPORTANT: Use EXACT skill and action names as shown below!
 
 SKILL: navigation
   - action: goto, params: {target: "player:Name" or "position:x,y,z"}
+    IMPORTANT: If a player gives coordinates (e.g., "goto 100 64 200"), use "position:x,y,z" format.
+    Do NOT default to "player:Name" unless they explicitly ask you to come to THEM.
   - action: follow, params: {player: "PlayerName"} (just the name, no prefix!)
   - action: stop, params: {}
 

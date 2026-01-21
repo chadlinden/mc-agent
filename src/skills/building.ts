@@ -5,6 +5,7 @@ const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
 import { getNavigationController } from '../bot/navigation-controller.js';
 import type { SkillModule } from '../types/index.js';
+import { basename } from 'path';
 
 const log = createLogger('skill:building');
 
@@ -19,6 +20,11 @@ interface BuildResult {
   placed: number;
   failed: number;
 }
+
+const BUILD_PLAN_TYPES = {
+  BASE: 'base',
+  AIR: 'air',
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
@@ -41,7 +47,7 @@ export async function findGround(bot: Bot, pos: Vec3Type, maxDrop: number = 12):
   let p = pos.floored();
   for (let i = 0; i < maxDrop; i++) {
     const below = bot.blockAt(p.offset(0, -1, 0));
-    if (below && below.name !== 'air') return p;
+    if (below && below.name !== BUILD_PLAN_TYPES.AIR) return p;
     p = p.offset(0, -1, 0);
   }
   return pos.floored();
@@ -62,19 +68,26 @@ export async function equipItem(bot: Bot, name: string): Promise<boolean> {
  */
 async function digIfNeeded(bot: Bot, pos: Vec3Type): Promise<void> {
   const b = bot.blockAt(pos);
-  if (b && b.name !== 'air') {
+  if (b && b.name !== BUILD_PLAN_TYPES.AIR) {
     const nav = getNavigationController(bot);
-    await nav.goto(new Vec3(pos.x, pos.y, pos.z), { range: 2 });
+    // Use gotoBlock to ensure we aren't standing in the block we want to dig
+    await nav.gotoBlock(new Vec3(pos.x, pos.y, pos.z), { range: 4 });
     await bot.dig(b);
   }
 }
 
 /**
  * Place a block at position with timeout protection
+ * Verifies placement by checking block state, handling cases where blockUpdate event doesn't fire
  */
-async function placeAt(bot: Bot, targetPos: Vec3Type, timeoutMs: number = 8000): Promise<boolean> {
+async function placeAt(bot: Bot, targetPos: Vec3Type, expectedBlockType?: string, timeoutMs: number = 8000): Promise<boolean> {
   const cur = bot.blockAt(targetPos);
-  if (cur && cur.name !== 'air') return true;
+  // If block already exists and matches expected type (or any non-air if no type specified), consider success
+  if (cur && cur.name !== BUILD_PLAN_TYPES.AIR) {
+    if (!expectedBlockType || cur.name === expectedBlockType) {
+      return true;
+    }
+  }
 
   const offsets = [
     new Vec3(0, -1, 0),
@@ -88,11 +101,12 @@ async function placeAt(bot: Bot, targetPos: Vec3Type, timeoutMs: number = 8000):
   for (const off of offsets) {
     const refPos = targetPos.plus(off);
     const refBlock = bot.blockAt(refPos);
-    if (refBlock && refBlock.name !== 'air') {
+    if (refBlock && refBlock.name !== BUILD_PLAN_TYPES.AIR) {
       try {
         const nav = getNavigationController(bot);
+        // Use gotoBlock instead of goto to ensure we aren't standing in the way
         await withTimeout(
-          nav.goto(new Vec3(targetPos.x, targetPos.y, targetPos.z), { range: 2 }),
+          nav.gotoBlock(new Vec3(targetPos.x, targetPos.y, targetPos.z), { range: 4 }),
           timeoutMs,
           `Pathfinding to ${targetPos} timed out`
         );
@@ -101,17 +115,40 @@ async function placeAt(bot: Bot, targetPos: Vec3Type, timeoutMs: number = 8000):
         log.warn('Pathfinding failed, trying to place anyway', { error: error.message });
       }
 
+      // Attempt placement
+      let placementAttempted = false;
       try {
         await withTimeout(
           bot.placeBlock(refBlock, off.scaled(-1)),
           timeoutMs,
           `Placing block at ${targetPos} timed out`
         );
-        return true;
+        placementAttempted = true;
       } catch (err) {
         const error = err as Error;
-        log.warn('Block placement failed', { pos: targetPos, error: error.message });
-        // Continue trying other reference blocks
+        placementAttempted = true;
+        // Event may have timed out, but block might still be placed (common in creative mode)
+        log.debug('PlaceBlock event timed out, verifying placement', { pos: targetPos, error: error.message });
+      }
+
+      // Verify placement by checking block state after a short delay
+      // This handles cases where blockUpdate event doesn't fire (e.g., creative mode)
+      if (placementAttempted) {
+        await sleep(100); // Give server time to update block state
+
+        const placedBlock = bot.blockAt(targetPos);
+        if (placedBlock && placedBlock.name !== BUILD_PLAN_TYPES.AIR) {
+          // Block was placed successfully
+          if (!expectedBlockType || placedBlock.name === expectedBlockType) {
+            return true;
+          }
+          // Block exists but wrong type - might need to break and retry
+          log.debug('Block placed but wrong type', {
+            pos: targetPos,
+            expected: expectedBlockType,
+            actual: placedBlock.name
+          });
+        }
       }
     }
   }
@@ -126,6 +163,13 @@ export function hutPlan(origin: Vec3Type): BlockPlan[] {
   const w = 7;
   const wallH = 3;
   const x0 = origin.x, y0 = origin.y, z0 = origin.z;
+
+  // Base
+  for (let dx = 0; dx < w; dx++) {
+    for (let dz = 0; dz < w; dz++) {
+      blocks.push({ pos: new Vec3(x0 + dx, y0 - 1, z0 + dz), type: BUILD_PLAN_TYPES.BASE });
+    }
+  }
 
   // Floor
   for (let dx = 0; dx < w; dx++) {
@@ -146,8 +190,8 @@ export function hutPlan(origin: Vec3Type): BlockPlan[] {
 
   // Door opening
   const doorX = x0 + Math.floor(w / 2);
-  blocks.push({ pos: new Vec3(doorX, y0 + 1, z0), type: 'air' });
-  blocks.push({ pos: new Vec3(doorX, y0 + 2, z0), type: 'air' });
+  blocks.push({ pos: new Vec3(doorX, y0 + 1, z0), type: BUILD_PLAN_TYPES.AIR });
+  blocks.push({ pos: new Vec3(doorX, y0 + 2, z0), type: BUILD_PLAN_TYPES.AIR });
 
   // Roof
   for (let dx = 0; dx < w; dx++) {
@@ -168,7 +212,7 @@ export function hutPlan(origin: Vec3Type): BlockPlan[] {
 function isEdgeBlock(pos: Vec3Type, roofY: number, plan: BlockPlan[]): boolean {
   // A block is an edge if it's directly above a wall block
   const wallPositions = plan
-    .filter(p => p.pos.y === roofY - 1 && p.type !== 'air')
+    .filter(p => p.pos.y === roofY - 1 && p.type !== BUILD_PLAN_TYPES.AIR)
     .map(p => `${p.pos.x},${p.pos.z}`);
 
   return wallPositions.includes(`${pos.x},${pos.z}`);
@@ -179,11 +223,20 @@ function isEdgeBlock(pos: Vec3Type, roofY: number, plan: BlockPlan[]): boolean {
  * Sorts blocks to ensure proper support order (bottom to top, edges first)
  */
 async function buildFromPlan(bot: Bot, plan: BlockPlan[], originY: number): Promise<BuildResult> {
-  const floor = plan.filter(p => p.pos.y === originY && p.type !== 'air');
-  const walls = plan.filter(p => p.pos.y > originY && p.pos.y <= originY + 3 && p.type !== 'air');
-  const roof = plan.filter(p => p.pos.y === originY + 4 && p.type !== 'air');
-  const airBlocks = plan.filter(p => p.type === 'air');
-  const rest = plan.filter(p => !floor.includes(p) && !walls.includes(p) && !roof.includes(p) && p.type !== 'air');
+  const base = plan.filter(p => p.pos.y === originY - 1 && p.type === BUILD_PLAN_TYPES.BASE);
+  const floor = plan.filter(p => p.pos.y === originY && p.type !== BUILD_PLAN_TYPES.AIR);
+  const walls = plan.filter(p => p.pos.y > originY && p.pos.y <= originY + 3 && p.type !== BUILD_PLAN_TYPES.AIR);
+  const roof = plan.filter(p => p.pos.y === originY + 4 && p.type !== BUILD_PLAN_TYPES.AIR);
+  const airBlocks = plan.filter(p => p.type === BUILD_PLAN_TYPES.AIR);
+  const rest = plan.filter(p => !floor.includes(p) && !walls.includes(p) && !roof.includes(p) && p.type !== BUILD_PLAN_TYPES.AIR);
+
+  base.sort((a, b) => {
+    const aIsEdge = isEdgeBlock(a.pos, originY + 4, plan);
+    const bIsEdge = isEdgeBlock(b.pos, originY + 4, plan);
+    if (aIsEdge && !bIsEdge) return -1;
+    if (!aIsEdge && bIsEdge) return 1;
+    return 0;
+  });
 
   // Sort walls by Y (bottom to top) to ensure lower blocks support upper ones
   walls.sort((a, b) => a.pos.y - b.pos.y);
@@ -205,7 +258,11 @@ async function buildFromPlan(bot: Bot, plan: BlockPlan[], originY: number): Prom
 
   for (const stage of stages) {
     for (const step of stage) {
-      if (step.type === 'air') {
+      if (step.type === BUILD_PLAN_TYPES.BASE) {
+
+      }
+
+      if (step.type === BUILD_PLAN_TYPES.AIR) {
         try {
           await digIfNeeded(bot, step.pos);
         } catch (err) {
@@ -230,7 +287,7 @@ async function buildFromPlan(bot: Bot, plan: BlockPlan[], originY: number): Prom
         continue;
       }
 
-      if (cur && cur.name !== 'air' && cur.name !== step.type) {
+      if (cur && cur.name !== BUILD_PLAN_TYPES.AIR && cur.name !== step.type) {
         try {
           await digIfNeeded(bot, step.pos);
         } catch (err) {
@@ -240,9 +297,10 @@ async function buildFromPlan(bot: Bot, plan: BlockPlan[], originY: number): Prom
       }
 
       let success = false;
-      for (let attempt = 0; attempt < 2; attempt++) {
+      // Increased retries to handle creative mode and event timing issues
+      for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          success = await placeAt(bot, step.pos);
+          success = await placeAt(bot, step.pos, step.type);
           if (success) break;
         } catch (err) {
           const error = err as Error;
@@ -319,7 +377,10 @@ export const actions: SkillModule['actions'] = {
       const ok = await equipItem(bot, blockType);
       if (!ok) throw new Error(`Don't have ${blockType}`);
 
-      await placeAt(bot, pos);
+      const success = await placeAt(bot, pos, blockType);
+      if (!success) {
+        throw new Error(`Failed to place ${blockType} at ${pos.x}, ${pos.y}, ${pos.z}`);
+      }
       return `Placed ${blockType} at ${pos.x}, ${pos.y}, ${pos.z}`;
     },
   },
