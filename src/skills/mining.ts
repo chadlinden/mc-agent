@@ -1,19 +1,23 @@
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
+import type { Bot } from 'mineflayer';
+import type { Block } from 'prismarine-block';
+import vec3Pkg from 'vec3';
+const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
+import type { SkillModule } from '../types/index.js';
 
 const log = createLogger('skill:mining');
 
 export const description = 'Resource gathering and mining skills';
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
 /**
  * Count items matching a pattern in inventory
  */
-function invCountMatching(bot, pattern) {
+function invCountMatching(bot: Bot, pattern: string): number {
   return bot.inventory.items()
     .filter(i => i.name.includes(pattern))
     .reduce((s, i) => s + i.count, 0);
@@ -22,8 +26,8 @@ function invCountMatching(bot, pattern) {
 /**
  * Normalize block type names (handle common aliases)
  */
-function normalizeBlockType(blockType) {
-  const aliases = {
+function normalizeBlockType(blockType: string): string {
+  const aliases: Record<string, string> = {
     'coal': 'coal_ore',
     'iron': 'iron_ore',
     'gold': 'gold_ore',
@@ -46,7 +50,7 @@ function normalizeBlockType(blockType) {
 /**
  * Equip best tool for mining
  */
-export async function equipBestTool(bot, blockName) {
+export async function equipBestTool(bot: Bot, blockName: string): Promise<boolean> {
   const pickaxes = ['diamond_pickaxe', 'iron_pickaxe', 'stone_pickaxe', 'wooden_pickaxe'];
   const axes = ['diamond_axe', 'iron_axe', 'stone_axe', 'wooden_axe'];
   const shovels = ['diamond_shovel', 'iron_shovel', 'stone_shovel', 'wooden_shovel'];
@@ -70,23 +74,23 @@ export async function equipBestTool(bot, blockName) {
   return false;
 }
 
-export const actions = {
+export const actions: SkillModule['actions'] = {
   mine: {
     description: 'Find and mine blocks of a specific type',
     params: {
       blockType: 'Block type to mine (e.g., "stone", "iron_ore")',
       count: 'Number of blocks to mine (default 16)',
     },
-    async execute(bot, params) {
-      const blockType = normalizeBlockType(params.blockType);
-      const targetCount = parseInt(params.count, 10) || 16;
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const blockType = normalizeBlockType(params.blockType as string);
+      const targetCount = parseInt(params.count as string, 10) || 16;
       log.info('Mining blocks', { blockType, targetCount });
 
       let mined = 0;
 
       while (mined < targetCount) {
         const block = bot.findBlock({
-          matching: b => b && b.name === blockType,
+          matching: (b: Block) => b && b.name === blockType,
           maxDistance: 48,
           count: 1,
         });
@@ -96,12 +100,8 @@ export const actions = {
           break;
         }
 
-        await bot.pathfinder.goto(new goals.GoalNear(
-          block.position.x,
-          block.position.y,
-          block.position.z,
-          2
-        ));
+        const nav = getNavigationController(bot);
+        await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 2 });
 
         await equipBestTool(bot, blockType);
 
@@ -123,13 +123,13 @@ export const actions = {
     params: {
       count: 'Number of logs to gather (default 16)',
     },
-    async execute(bot, params) {
-      const targetCount = parseInt(params.count, 10) || 16;
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const targetCount = parseInt(params.count as string, 10) || 16;
       const startCount = invCountMatching(bot, '_log');
 
       while (invCountMatching(bot, '_log') - startCount < targetCount) {
         const block = bot.findBlock({
-          matching: b => b && b.name.endsWith('_log'),
+          matching: (b: Block) => b && b.name.endsWith('_log'),
           maxDistance: 48,
           count: 1,
         });
@@ -139,12 +139,8 @@ export const actions = {
           break;
         }
 
-        await bot.pathfinder.goto(new goals.GoalNear(
-          block.position.x,
-          block.position.y,
-          block.position.z,
-          2
-        ));
+        const nav = getNavigationController(bot);
+        await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 2 });
 
         await equipBestTool(bot, '_log');
 
@@ -166,12 +162,12 @@ export const actions = {
     params: {
       oreType: 'Ore type (e.g., "iron_ore", "diamond_ore", "coal_ore")',
     },
-    async execute(bot, params) {
-      const oreType = normalizeBlockType(params.oreType);
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const oreType = normalizeBlockType(params.oreType as string);
       log.info('Finding ore', { oreType });
 
       const block = bot.findBlock({
-        matching: b => b && b.name === oreType,
+        matching: (b: Block) => b && b.name === oreType,
         maxDistance: 64,
         count: 1,
       });
@@ -180,12 +176,8 @@ export const actions = {
         throw new Error(`No ${oreType} found nearby`);
       }
 
-      await bot.pathfinder.goto(new goals.GoalNear(
-        block.position.x,
-        block.position.y,
-        block.position.z,
-        3
-      ));
+      const nav = getNavigationController(bot);
+      await nav.goto(new Vec3(block.position.x, block.position.y, block.position.z), { range: 3 });
 
       return `Found ${oreType} at ${block.position.x}, ${block.position.y}, ${block.position.z}`;
     },

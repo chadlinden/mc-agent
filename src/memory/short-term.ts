@@ -3,11 +3,37 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('short-term-memory');
 
+interface MemoryEvent {
+  timestamp: number;
+  type: string;
+  data: Record<string, unknown>;
+}
+
+interface ChatEntry {
+  timestamp: number;
+  username: string;
+  message: string;
+  isBot: boolean;
+}
+
+interface ActionEntry {
+  timestamp: number;
+  skill: string;
+  action: string;
+  params: Record<string, unknown>;
+  result: string;
+}
+
 /**
  * Ring buffer for short-term memory (recent events, chat, actions)
  */
 export class ShortTermMemory {
-  constructor(maxSize = config.bot.memoryBufferSize) {
+  private maxSize: number;
+  private events: MemoryEvent[];
+  private chatHistory: ChatEntry[];
+  private actionHistory: ActionEntry[];
+
+  constructor(maxSize: number = config.bot.memoryBufferSize) {
     this.maxSize = maxSize;
     this.events = [];
     this.chatHistory = [];
@@ -17,8 +43,8 @@ export class ShortTermMemory {
   /**
    * Add an event to memory
    */
-  addEvent(type, data) {
-    const event = {
+  addEvent(type: string, data: Record<string, unknown>): void {
+    const event: MemoryEvent = {
       timestamp: Date.now(),
       type,
       data,
@@ -33,8 +59,8 @@ export class ShortTermMemory {
   /**
    * Add a chat message to history
    */
-  addChat(username, message, isBot = false) {
-    const entry = {
+  addChat(username: string, message: string, isBot: boolean = false): void {
+    const entry: ChatEntry = {
       timestamp: Date.now(),
       username,
       message,
@@ -49,8 +75,8 @@ export class ShortTermMemory {
   /**
    * Add an action to history
    */
-  addAction(skill, action, params, result) {
-    const entry = {
+  addAction(skill: string, action: string, params: Record<string, unknown>, result: string): void {
+    const entry: ActionEntry = {
       timestamp: Date.now(),
       skill,
       action,
@@ -66,7 +92,7 @@ export class ShortTermMemory {
   /**
    * Get recent events of a specific type
    */
-  getRecentEvents(type = null, count = 10) {
+  getRecentEvents(type: string | null = null, count: number = 10): MemoryEvent[] {
     let events = this.events;
     if (type) {
       events = events.filter(e => e.type === type);
@@ -77,21 +103,21 @@ export class ShortTermMemory {
   /**
    * Get recent chat messages
    */
-  getRecentChat(count = 10) {
+  getRecentChat(count: number = 10): ChatEntry[] {
     return this.chatHistory.slice(-count);
   }
 
   /**
    * Get recent actions
    */
-  getRecentActions(count = 10) {
+  getRecentActions(count: number = 10): ActionEntry[] {
     return this.actionHistory.slice(-count);
   }
 
   /**
    * Format chat history for LLM context
    */
-  formatChatForContext(count = 10) {
+  formatChatForContext(count: number = 10): string {
     return this.getRecentChat(count)
       .map(c => `${c.isBot ? '[Bot]' : `[${c.username}]`}: ${c.message}`)
       .join('\n');
@@ -100,7 +126,7 @@ export class ShortTermMemory {
   /**
    * Format recent events for LLM context
    */
-  formatEventsForContext(count = 10) {
+  formatEventsForContext(count: number = 10): string {
     return this.getRecentEvents(null, count)
       .map(e => `- ${e.type}: ${JSON.stringify(e.data)}`)
       .join('\n');
@@ -109,7 +135,7 @@ export class ShortTermMemory {
   /**
    * Format recent actions for LLM context
    */
-  formatActionsForContext(count = 5) {
+  formatActionsForContext(count: number = 5): string {
     return this.getRecentActions(count)
       .map(a => `- ${a.skill}.${a.action}(${JSON.stringify(a.params)}) → ${a.result}`)
       .join('\n');
@@ -118,7 +144,7 @@ export class ShortTermMemory {
   /**
    * Clear all memory
    */
-  clear() {
+  clear(): void {
     this.events = [];
     this.chatHistory = [];
     this.actionHistory = [];

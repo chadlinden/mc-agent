@@ -1,16 +1,40 @@
+import type { Bot } from 'mineflayer';
 import * as navigation from './navigation.js';
 import * as building from './building.js';
 import * as inventory from './inventory.js';
 import * as mining from './mining.js';
 import * as combat from './combat.js';
 import { createLogger } from '../utils/logger.js';
+import type { SkillModule, SkillActionParams } from '../types/index.js';
 
 const log = createLogger('skills');
+
+interface SkillRegistry {
+  [key: string]: SkillModule;
+}
+
+interface ActionResult {
+  success: boolean;
+  result?: string;
+  error?: string;
+}
+
+interface SkillMetadata {
+  [skillName: string]: {
+    description: string;
+    actions: {
+      [actionName: string]: {
+        description: string;
+        params: SkillActionParams;
+      };
+    };
+  };
+}
 
 /**
  * Skill registry - maps skill names to their modules
  */
-export const skills = {
+export const skills: SkillRegistry = {
   navigation,
   building,
   inventory,
@@ -21,7 +45,12 @@ export const skills = {
 /**
  * Execute a skill action
  */
-export async function executeAction(bot, skillName, actionName, params = {}) {
+export async function executeAction(
+  bot: Bot,
+  skillName: string,
+  actionName: string,
+  params: Record<string, unknown> = {}
+): Promise<ActionResult> {
   const skill = skills[skillName];
   if (!skill) {
     log.warn('Unknown skill', { skillName });
@@ -35,28 +64,31 @@ export async function executeAction(bot, skillName, actionName, params = {}) {
   }
 
   try {
-    log.info('Executing action', { skillName, actionName, params });
+    log.info(`🚀 Starting ${skillName}.${actionName}()`, params);
+    const startTime = Date.now();
     const result = await action.execute(bot, params);
-    log.info('Action completed', { skillName, actionName, result });
+    const duration = Date.now() - startTime;
+    log.info(`✅ Completed ${skillName}.${actionName}() in ${duration}ms: ${result}`);
     return { success: true, result };
   } catch (err) {
-    log.error('Action failed', { skillName, actionName, error: err.message });
-    return { success: false, error: err.message };
+    const error = err as Error;
+    log.error(`💥 Failed ${skillName}.${actionName}(): ${error.message}`);
+    return { success: false, error: error.message };
   }
 }
 
 /**
  * Get all skill metadata for LLM context
  */
-export function getSkillMetadata() {
-  const metadata = {};
+export function getSkillMetadata(): SkillMetadata {
+  const metadata: SkillMetadata = {};
   for (const [skillName, skill] of Object.entries(skills)) {
     metadata[skillName] = {
       description: skill.description,
       actions: {},
     };
     for (const [actionName, action] of Object.entries(skill.actions)) {
-      metadata[skillName].actions[actionName] = {
+      metadata[skillName]!.actions[actionName] = {
         description: action.description,
         params: action.params,
       };

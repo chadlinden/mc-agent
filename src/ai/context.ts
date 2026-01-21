@@ -1,14 +1,32 @@
+import type { Bot } from 'mineflayer';
 import { buildWorldState } from '../utils/world-state.js';
 import { buildSystemPrompt, buildChatPrompt, buildAutonomousPrompt } from './prompts.js';
 import { createLogger } from '../utils/logger.js';
+import type { ShortTermMemory } from '../memory/short-term.js';
+import type { LongTermMemory } from '../memory/long-term.js';
 
 const log = createLogger('context');
+
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+interface ContextResult {
+  messages: ChatMessage[];
+  worldState: ReturnType<typeof buildWorldState>;
+}
 
 /**
  * Context builder for AI prompts
  */
 export class ContextBuilder {
-  constructor(bot, shortTermMemory, longTermMemory) {
+  private bot: Bot;
+  private shortTerm: ShortTermMemory;
+  private longTerm: LongTermMemory;
+  private botName: string;
+
+  constructor(bot: Bot, shortTermMemory: ShortTermMemory, longTermMemory: LongTermMemory) {
     this.bot = bot;
     this.shortTerm = shortTermMemory;
     this.longTerm = longTermMemory;
@@ -18,14 +36,14 @@ export class ContextBuilder {
   /**
    * Get current world state
    */
-  getWorldState() {
+  getWorldState(): ReturnType<typeof buildWorldState> {
     return buildWorldState(this.bot);
   }
 
   /**
    * Build context for chat response
    */
-  buildChatContext(playerName, message) {
+  buildChatContext(playerName: string, message: string): ContextResult {
     const worldState = this.getWorldState();
     const longTermMemory = this.longTerm.formatForContext();
 
@@ -49,7 +67,7 @@ export class ContextBuilder {
   /**
    * Build context for autonomous decision
    */
-  buildAutonomousContext() {
+  buildAutonomousContext(): ContextResult {
     const worldState = this.getWorldState();
     const longTermMemory = this.longTerm.formatForContext();
     const recentActions = this.shortTerm.formatActionsForContext(5);

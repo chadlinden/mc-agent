@@ -1,12 +1,16 @@
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
+import type { Bot } from 'mineflayer';
+import type { Entity } from 'prismarine-entity';
+import vec3Pkg from 'vec3';
+const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
+import type { SkillModule } from '../types/index.js';
 
 const log = createLogger('skill:combat');
 
 export const description = 'Combat and defense skills';
 
-function sleep(ms) {
+function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
@@ -20,7 +24,7 @@ export const HOSTILE_MOBS = [
 /**
  * Equip best weapon
  */
-export async function equipWeapon(bot) {
+export async function equipWeapon(bot: Bot): Promise<boolean> {
   const weapons = ['diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword', 'diamond_axe', 'iron_axe'];
 
   for (const weaponName of weapons) {
@@ -37,7 +41,7 @@ export async function equipWeapon(bot) {
 /**
  * Find nearest hostile mob
  */
-export function findNearestHostile(bot, maxDistance = 16) {
+export function findNearestHostile(bot: Bot, maxDistance: number = 16): Entity | null {
   return bot.nearestEntity(e => {
     if (!e) return false;
     const distance = bot.entity.position.distanceTo(e.position);
@@ -48,25 +52,26 @@ export function findNearestHostile(bot, maxDistance = 16) {
   });
 }
 
-export const actions = {
+export const actions: SkillModule['actions'] = {
   attack: {
     description: 'Attack a target entity',
     params: {
       target: 'Target: "player:Name", "entity:type", or "nearest_hostile"',
     },
-    async execute(bot, params) {
-      let target;
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      let target: Entity | null = null;
+      const targetStr = params.target as string;
 
-      if (params.target === 'nearest_hostile') {
+      if (targetStr === 'nearest_hostile') {
         target = findNearestHostile(bot);
         if (!target) throw new Error('No hostile mobs nearby');
-      } else if (params.target.startsWith('player:')) {
-        const playerName = params.target.slice(7);
+      } else if (targetStr.startsWith('player:')) {
+        const playerName = targetStr.slice(7);
         const player = bot.players[playerName];
         if (!player?.entity) throw new Error(`Cannot see player: ${playerName}`);
         target = player.entity;
-      } else if (params.target.startsWith('entity:')) {
-        const entityType = params.target.slice(7);
+      } else if (targetStr.startsWith('entity:')) {
+        const entityType = targetStr.slice(7);
         target = bot.nearestEntity(e => {
           const name = e?.name || e?.mobType || '';
           return name.toLowerCase().includes(entityType.toLowerCase());
@@ -82,22 +87,21 @@ export const actions = {
       const attackRange = 3;
       let hits = 0;
 
-      while (target.isValid && target.health > 0 && hits < 20) {
+      const nav = getNavigationController(bot);
+
+      while (target.isValid && (target.health ?? 0) > 0 && hits < 20) {
         const distance = bot.entity.position.distanceTo(target.position);
 
         if (distance > attackRange) {
-          await bot.pathfinder.goto(new goals.GoalNear(
-            target.position.x,
-            target.position.y,
-            target.position.z,
-            2
-          ));
+          await nav.goto(new Vec3(target.position.x, target.position.y, target.position.z), { range: 2 });
         }
 
         try {
           await bot.attack(target);
           hits++;
-        } catch {}
+        } catch {
+          // Ignore attack errors
+        }
 
         await sleep(500); // Attack cooldown
       }
@@ -109,7 +113,7 @@ export const actions = {
   defend: {
     description: 'Attack the nearest hostile mob',
     params: {},
-    async execute(bot) {
+    async execute(bot: Bot): Promise<string> {
       const hostile = findNearestHostile(bot);
       if (!hostile) {
         return 'No hostile mobs nearby';
@@ -117,25 +121,23 @@ export const actions = {
 
       await equipWeapon(bot);
 
+      const nav = getNavigationController(bot);
       const attackRange = 3;
       let hits = 0;
 
-      while (hostile.isValid && hostile.health > 0 && hits < 15) {
+      while (hostile.isValid && (hostile.health ?? 0) > 0 && hits < 15) {
         const distance = bot.entity.position.distanceTo(hostile.position);
 
         if (distance > attackRange) {
-          await bot.pathfinder.goto(new goals.GoalNear(
-            hostile.position.x,
-            hostile.position.y,
-            hostile.position.z,
-            2
-          ));
+          await nav.goto(new Vec3(hostile.position.x, hostile.position.y, hostile.position.z), { range: 2 });
         }
 
         try {
           await bot.attack(hostile);
           hits++;
-        } catch {}
+        } catch {
+          // Ignore attack errors
+        }
 
         await sleep(500);
       }
@@ -148,7 +150,7 @@ export const actions = {
   flee: {
     description: 'Run away from danger',
     params: {},
-    async execute(bot) {
+    async execute(bot: Bot): Promise<string> {
       const hostile = findNearestHostile(bot, 24);
 
       if (!hostile) {
@@ -163,15 +165,11 @@ export const actions = {
       // Move 20 blocks away
       const safePos = myPos.plus(direction.scaled(20));
 
-      bot.pathfinder.setGoal(new goals.GoalNear(
-        safePos.x,
-        safePos.y,
-        safePos.z,
-        2
-      ), true);
+      const nav = getNavigationController(bot);
+      nav.follow({ position: safePos } as Entity, 2);
 
       await sleep(3000); // Run for a bit
-      bot.pathfinder.setGoal(null);
+      nav.stop();
 
       return 'Fled from danger';
     },

@@ -18,7 +18,7 @@ import { initialize as initLLM, shutdown as shutdownLLM } from './ai/llm.js';
 
 const log = createLogger('main');
 
-async function main() {
+async function main(): Promise<void> {
   log.info('Starting AI Minecraft Bot...');
 
   // Initialize LLM
@@ -27,7 +27,8 @@ async function main() {
     await initLLM();
     log.info('LLM initialized successfully');
   } catch (err) {
-    log.error('Failed to initialize LLM', { error: err.message });
+    const error = err as Error;
+    log.error('Failed to initialize LLM', { error: error.message });
     log.error('Make sure you have a GGUF model at the path specified in .env');
     process.exit(1);
   }
@@ -44,7 +45,7 @@ async function main() {
 
   // Override chat handler to check for direct commands first
   const originalHandleChat = decisionEngine.handleChat.bind(decisionEngine);
-  decisionEngine.handleChat = async (username, message) => {
+  decisionEngine.handleChat = async (username: string, message: string): Promise<void> => {
     // Check for direct commands first
     const handled = await tryDirectCommand(message, bot, decisionEngine);
     if (!handled) {
@@ -57,14 +58,16 @@ async function main() {
   setupEventHandlers(bot, decisionEngine, shortTermMemory);
 
   // Graceful shutdown
-  const shutdown = async (signal) => {
+  const shutdown = async (signal: string): Promise<void> => {
     log.info(`Received ${signal}, shutting down...`);
 
     decisionEngine.stopAutonomousLoop();
 
     try {
       bot.quit();
-    } catch {}
+    } catch {
+      // Ignore quit errors
+    }
 
     await shutdownLLM();
 

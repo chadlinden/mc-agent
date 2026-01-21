@@ -1,12 +1,16 @@
+import type { Bot } from 'mineflayer';
+import type { Entity } from 'prismarine-entity';
 import { createLogger } from '../utils/logger.js';
 import { initializePathfinder } from './bot.js';
+import type { DecisionEngine } from '../ai/decision-engine.js';
+import type { ShortTermMemory } from '../memory/short-term.js';
 
 const log = createLogger('events');
 
 /**
  * Set up all bot event handlers
  */
-export function setupEventHandlers(bot, decisionEngine, shortTermMemory) {
+export function setupEventHandlers(bot: Bot, decisionEngine: DecisionEngine, shortTermMemory: ShortTermMemory): void {
   // Spawn event
   bot.once('spawn', () => {
     log.info('Bot spawned', {
@@ -25,7 +29,7 @@ export function setupEventHandlers(bot, decisionEngine, shortTermMemory) {
   });
 
   // Chat event
-  bot.on('chat', async (username, message) => {
+  bot.on('chat', async (username: string, message: string) => {
     // Ignore own messages
     if (username === bot.username) return;
 
@@ -51,7 +55,7 @@ export function setupEventHandlers(bot, decisionEngine, shortTermMemory) {
   });
 
   // Entity hurt (bot took damage)
-  bot.on('entityHurt', (entity) => {
+  bot.on('entityHurt', (entity: Entity) => {
     if (entity === bot.entity) {
       log.info('Bot took damage', { health: bot.health });
       shortTermMemory.addEvent('took_damage', { health: bot.health });
@@ -94,18 +98,18 @@ export function setupEventHandlers(bot, decisionEngine, shortTermMemory) {
   });
 
   // Kicked from server
-  bot.on('kicked', (reason) => {
+  bot.on('kicked', (reason: string) => {
     log.error('Bot kicked', { reason });
     decisionEngine.stopAutonomousLoop();
   });
 
   // Error
-  bot.on('error', (err) => {
+  bot.on('error', (err: Error) => {
     log.error('Bot error', { error: err.message });
   });
 
   // End (disconnected)
-  bot.on('end', (reason) => {
+  bot.on('end', (reason: string) => {
     log.warn('Bot disconnected', { reason });
     decisionEngine.stopAutonomousLoop();
   });

@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createLogger } from '../utils/logger.js';
 
@@ -8,17 +8,48 @@ const log = createLogger('long-term-memory');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_MEMORY_PATH = path.join(__dirname, '../../data/memory.json');
 
+interface Position {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface PlayerInfo {
+  firstSeen: number;
+  lastSeen?: number;
+  interactions: number;
+  [key: string]: unknown;
+}
+
+interface LocationInfo {
+  position: Position;
+  description: string;
+  savedAt: number;
+}
+
+interface MemoryData {
+  players: Record<string, PlayerInfo>;
+  locations: Record<string, LocationInfo>;
+  facts: string[];
+  preferences: Record<string, unknown>;
+  createdAt: number;
+  lastUpdated: number;
+}
+
 /**
  * Persistent long-term memory stored as JSON
  */
 export class LongTermMemory {
-  constructor(filePath = DEFAULT_MEMORY_PATH) {
+  private filePath: string;
+  private data: MemoryData;
+
+  constructor(filePath: string = DEFAULT_MEMORY_PATH) {
     this.filePath = filePath;
     this.data = {
-      players: {},        // Player relationships and info
-      locations: {},      // Named locations (base, farms, etc.)
-      facts: [],          // General learned facts
-      preferences: {},    // Bot preferences learned over time
+      players: {},
+      locations: {},
+      facts: [],
+      preferences: {},
       createdAt: Date.now(),
       lastUpdated: Date.now(),
     };
@@ -28,7 +59,7 @@ export class LongTermMemory {
   /**
    * Load memory from disk
    */
-  load() {
+  load(): void {
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) {
@@ -36,21 +67,22 @@ export class LongTermMemory {
       }
       if (fs.existsSync(this.filePath)) {
         const content = fs.readFileSync(this.filePath, 'utf-8');
-        this.data = JSON.parse(content);
+        this.data = JSON.parse(content) as MemoryData;
         log.info('Long-term memory loaded', { entries: this.data.facts.length });
       } else {
         this.save();
         log.info('Created new long-term memory file');
       }
     } catch (err) {
-      log.error('Failed to load long-term memory', { error: err.message });
+      const error = err as Error;
+      log.error('Failed to load long-term memory', { error: error.message });
     }
   }
 
   /**
    * Save memory to disk
    */
-  save() {
+  save(): void {
     try {
       this.data.lastUpdated = Date.now();
       const dir = path.dirname(this.filePath);
@@ -60,25 +92,28 @@ export class LongTermMemory {
       fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
       log.debug('Long-term memory saved');
     } catch (err) {
-      log.error('Failed to save long-term memory', { error: err.message });
+      const error = err as Error;
+      log.error('Failed to save long-term memory', { error: error.message });
     }
   }
 
   /**
    * Remember a player
    */
-  rememberPlayer(username, info) {
-    if (!this.data.players[username]) {
+  rememberPlayer(username: string, info: Partial<PlayerInfo>): void {
+    const existing = this.data.players[username];
+    if (!existing) {
       this.data.players[username] = {
         firstSeen: Date.now(),
         interactions: 0,
       };
     }
+    const current = this.data.players[username]!;
     this.data.players[username] = {
-      ...this.data.players[username],
+      ...current,
       ...info,
       lastSeen: Date.now(),
-      interactions: (this.data.players[username].interactions || 0) + 1,
+      interactions: (current.interactions || 0) + 1,
     };
     this.save();
   }
@@ -86,21 +121,21 @@ export class LongTermMemory {
   /**
    * Get player info
    */
-  getPlayer(username) {
+  getPlayer(username: string): PlayerInfo | null {
     return this.data.players[username] || null;
   }
 
   /**
    * Get all known players
    */
-  getAllPlayers() {
+  getAllPlayers(): Record<string, PlayerInfo> {
     return this.data.players;
   }
 
   /**
    * Save a named location
    */
-  saveLocation(name, position, description = '') {
+  saveLocation(name: string, position: Position, description: string = ''): void {
     this.data.locations[name] = {
       position: { x: position.x, y: position.y, z: position.z },
       description,
@@ -113,21 +148,21 @@ export class LongTermMemory {
   /**
    * Get a named location
    */
-  getLocation(name) {
+  getLocation(name: string): LocationInfo | null {
     return this.data.locations[name] || null;
   }
 
   /**
    * Get all locations
    */
-  getAllLocations() {
+  getAllLocations(): Record<string, LocationInfo> {
     return this.data.locations;
   }
 
   /**
    * Add a fact
    */
-  addFact(fact) {
+  addFact(fact: string): void {
     if (!this.data.facts.includes(fact)) {
       this.data.facts.push(fact);
       this.save();
@@ -138,14 +173,14 @@ export class LongTermMemory {
   /**
    * Get all facts
    */
-  getFacts() {
+  getFacts(): string[] {
     return this.data.facts;
   }
 
   /**
    * Set a preference
    */
-  setPreference(key, value) {
+  setPreference(key: string, value: unknown): void {
     this.data.preferences[key] = value;
     this.save();
   }
@@ -153,15 +188,15 @@ export class LongTermMemory {
   /**
    * Get a preference
    */
-  getPreference(key, defaultValue = null) {
-    return this.data.preferences[key] ?? defaultValue;
+  getPreference<T>(key: string, defaultValue: T | null = null): T | null {
+    return (this.data.preferences[key] as T) ?? defaultValue;
   }
 
   /**
    * Format memory for LLM context
    */
-  formatForContext() {
-    const lines = [];
+  formatForContext(): string {
+    const lines: string[] = [];
 
     const players = Object.keys(this.data.players);
     if (players.length > 0) {

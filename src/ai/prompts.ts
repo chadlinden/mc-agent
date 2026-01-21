@@ -2,6 +2,27 @@
  * System prompt templates for the AI bot
  */
 
+interface WorldStateBot {
+  position: { x: number; y: number; z: number };
+  health: number;
+  food: number;
+  heldItem: string;
+}
+
+interface NearbyEntity {
+  name: string;
+  distance: number;
+}
+
+interface WorldState {
+  bot: WorldStateBot;
+  inventory: string;
+  timeOfDay: string;
+  weather: string;
+  nearbyPlayers: NearbyEntity[];
+  nearbyMobs: NearbyEntity[];
+}
+
 export const SKILL_DESCRIPTIONS = `
 IMPORTANT: Use EXACT skill and action names as shown below!
 
@@ -38,7 +59,7 @@ Block name examples: stone, cobblestone, oak_log, oak_planks, coal_ore, iron_ore
 /**
  * Build the system prompt for the bot
  */
-export function buildSystemPrompt(botName) {
+export function buildSystemPrompt(botName: string): string {
   return `You are ${botName}, an AI-powered Minecraft bot. You can observe the world and perform actions by outputting JSON commands.
 
 ${SKILL_DESCRIPTIONS}
@@ -61,7 +82,7 @@ Example responses:
 Player asks you to come:
 {
   "thought": "Player wants me to come to them",
-  "speech": "On my way!",
+  "speech": "Yo ho ho, I'm on my way!",
   "action": { "skill": "navigation", "action": "goto", "params": { "target": "player:Steve" } }
 }
 
@@ -89,7 +110,7 @@ Important rules:
 /**
  * Build prompt for responding to chat
  */
-export function buildChatPrompt(worldState, memory, playerName, message) {
+export function buildChatPrompt(worldState: WorldState, memory: string, playerName: string, message: string): string {
   return `Current State:
 - Position: (${worldState.bot.position.x}, ${worldState.bot.position.y}, ${worldState.bot.position.z})
 - Health: ${worldState.bot.health}/20
@@ -111,7 +132,7 @@ Respond with JSON:`;
 /**
  * Build prompt for autonomous decision making
  */
-export function buildAutonomousPrompt(worldState, memory, recentActions) {
+export function buildAutonomousPrompt(worldState: WorldState, memory: string, recentActions: string): string {
   return `Current State:
 - Position: (${worldState.bot.position.x}, ${worldState.bot.position.y}, ${worldState.bot.position.z})
 - Health: ${worldState.bot.health}/20

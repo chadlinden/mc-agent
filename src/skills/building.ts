@@ -1,31 +1,43 @@
-import pathfinderPkg from 'mineflayer-pathfinder';
-const { goals } = pathfinderPkg;
+import type { Bot } from 'mineflayer';
+import type { Vec3 as Vec3Type } from 'vec3';
 import vec3Pkg from 'vec3';
 const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
+import { getNavigationController } from '../bot/navigation-controller.js';
+import type { SkillModule } from '../types/index.js';
 
 const log = createLogger('skill:building');
 
 export const description = 'Construction and block placement skills';
 
-function sleep(ms) {
+interface BlockPlan {
+  pos: Vec3Type;
+  type: string;
+}
+
+interface BuildResult {
+  placed: number;
+  failed: number;
+}
+
+function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
 /**
  * Wrap an async operation with a timeout
  */
-function withTimeout(promise, ms, errorMsg = 'Operation timed out') {
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string = 'Operation timed out'): Promise<T> {
   return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms)),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms)),
   ]);
 }
 
 /**
  * Find solid ground below a position
  */
-export async function findGround(bot, pos, maxDrop = 12) {
+export async function findGround(bot: Bot, pos: Vec3Type, maxDrop: number = 12): Promise<Vec3Type> {
   let p = pos.floored();
   for (let i = 0; i < maxDrop; i++) {
     const below = bot.blockAt(p.offset(0, -1, 0));
@@ -38,7 +50,7 @@ export async function findGround(bot, pos, maxDrop = 12) {
 /**
  * Equip an item by name
  */
-export async function equipItem(bot, name) {
+export async function equipItem(bot: Bot, name: string): Promise<boolean> {
   const item = bot.inventory.items().find(i => i.name === name);
   if (!item) return false;
   await bot.equip(item, 'hand');
@@ -48,10 +60,11 @@ export async function equipItem(bot, name) {
 /**
  * Dig a block if it exists
  */
-async function digIfNeeded(bot, pos) {
+async function digIfNeeded(bot: Bot, pos: Vec3Type): Promise<void> {
   const b = bot.blockAt(pos);
   if (b && b.name !== 'air') {
-    await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 2));
+    const nav = getNavigationController(bot);
+    await nav.goto(new Vec3(pos.x, pos.y, pos.z), { range: 2 });
     await bot.dig(b);
   }
 }
@@ -59,7 +72,7 @@ async function digIfNeeded(bot, pos) {
 /**
  * Place a block at position with timeout protection
  */
-async function placeAt(bot, targetPos, timeoutMs = 8000) {
+async function placeAt(bot: Bot, targetPos: Vec3Type, timeoutMs: number = 8000): Promise<boolean> {
   const cur = bot.blockAt(targetPos);
   if (cur && cur.name !== 'air') return true;
 
@@ -77,13 +90,15 @@ async function placeAt(bot, targetPos, timeoutMs = 8000) {
     const refBlock = bot.blockAt(refPos);
     if (refBlock && refBlock.name !== 'air') {
       try {
+        const nav = getNavigationController(bot);
         await withTimeout(
-          bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 2)),
+          nav.goto(new Vec3(targetPos.x, targetPos.y, targetPos.z), { range: 2 }),
           timeoutMs,
           `Pathfinding to ${targetPos} timed out`
         );
       } catch (err) {
-        log.warn('Pathfinding failed, trying to place anyway', { error: err.message });
+        const error = err as Error;
+        log.warn('Pathfinding failed, trying to place anyway', { error: error.message });
       }
 
       try {
@@ -94,7 +109,8 @@ async function placeAt(bot, targetPos, timeoutMs = 8000) {
         );
         return true;
       } catch (err) {
-        log.warn('Block placement failed', { pos: targetPos, error: err.message });
+        const error = err as Error;
+        log.warn('Block placement failed', { pos: targetPos, error: error.message });
         // Continue trying other reference blocks
       }
     }
@@ -105,8 +121,8 @@ async function placeAt(bot, targetPos, timeoutMs = 8000) {
 /**
  * Generate hut blueprint
  */
-export function hutPlan(origin) {
-  const blocks = [];
+export function hutPlan(origin: Vec3Type): BlockPlan[] {
+  const blocks: BlockPlan[] = [];
   const w = 7;
   const wallH = 3;
   const x0 = origin.x, y0 = origin.y, z0 = origin.z;
@@ -149,7 +165,7 @@ export function hutPlan(origin) {
 /**
  * Check if a position is on the edge of the roof (adjacent to a wall)
  */
-function isEdgeBlock(pos, roofY, plan) {
+function isEdgeBlock(pos: Vec3Type, roofY: number, plan: BlockPlan[]): boolean {
   // A block is an edge if it's directly above a wall block
   const wallPositions = plan
     .filter(p => p.pos.y === roofY - 1 && p.type !== 'air')
@@ -162,7 +178,7 @@ function isEdgeBlock(pos, roofY, plan) {
  * Build from a block plan
  * Sorts blocks to ensure proper support order (bottom to top, edges first)
  */
-async function buildFromPlan(bot, plan, originY) {
+async function buildFromPlan(bot: Bot, plan: BlockPlan[], originY: number): Promise<BuildResult> {
   const floor = plan.filter(p => p.pos.y === originY && p.type !== 'air');
   const walls = plan.filter(p => p.pos.y > originY && p.pos.y <= originY + 3 && p.type !== 'air');
   const roof = plan.filter(p => p.pos.y === originY + 4 && p.type !== 'air');
@@ -193,7 +209,8 @@ async function buildFromPlan(bot, plan, originY) {
         try {
           await digIfNeeded(bot, step.pos);
         } catch (err) {
-          log.warn('Failed to dig block', { pos: step.pos, error: err.message });
+          const error = err as Error;
+          log.warn('Failed to dig block', { pos: step.pos, error: error.message });
         }
         continue;
       }
@@ -217,7 +234,8 @@ async function buildFromPlan(bot, plan, originY) {
         try {
           await digIfNeeded(bot, step.pos);
         } catch (err) {
-          log.warn('Failed to clear block', { pos: step.pos, error: err.message });
+          const error = err as Error;
+          log.warn('Failed to clear block', { pos: step.pos, error: error.message });
         }
       }
 
@@ -227,7 +245,8 @@ async function buildFromPlan(bot, plan, originY) {
           success = await placeAt(bot, step.pos);
           if (success) break;
         } catch (err) {
-          log.warn('Place attempt failed', { pos: step.pos, attempt, error: err.message });
+          const error = err as Error;
+          log.warn('Place attempt failed', { pos: step.pos, attempt, error: error.message });
           await sleep(200);
         }
       }
@@ -247,20 +266,22 @@ async function buildFromPlan(bot, plan, originY) {
   return { placed, failed };
 }
 
-export const actions = {
+export const actions: SkillModule['actions'] = {
   build_hut: {
     description: 'Build a 7x7 wooden hut',
     params: {
       location: '"here" or "position:x,y,z"',
     },
-    async execute(bot, params) {
-      let origin;
-      if (params.location === 'here' || !params.location) {
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      let origin: Vec3Type;
+      const location = params.location as string | undefined;
+
+      if (location === 'here' || !location) {
         const pos = bot.entity.position.offset(5, 0, 0);
         origin = await findGround(bot, pos);
-      } else if (params.location.startsWith('position:')) {
-        const coords = params.location.slice(9).split(',').map(Number);
-        origin = await findGround(bot, new Vec3(coords[0], coords[1], coords[2]));
+      } else if (location.startsWith('position:')) {
+        const coords = location.slice(9).split(',').map(Number);
+        origin = await findGround(bot, new Vec3(coords[0]!, coords[1]!, coords[2]!));
       } else {
         throw new Error('Invalid location format');
       }
@@ -284,19 +305,22 @@ export const actions = {
       position: '"position:x,y,z"',
       blockType: 'Block type name (e.g., "oak_planks")',
     },
-    async execute(bot, params) {
-      if (!params.position?.startsWith('position:')) {
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const position = params.position as string | undefined;
+      const blockType = params.blockType as string;
+
+      if (!position?.startsWith('position:')) {
         throw new Error('Position must be in format "position:x,y,z"');
       }
 
-      const coords = params.position.slice(9).split(',').map(Number);
-      const pos = new Vec3(coords[0], coords[1], coords[2]);
+      const coords = position.slice(9).split(',').map(Number);
+      const pos = new Vec3(coords[0]!, coords[1]!, coords[2]!);
 
-      const ok = await equipItem(bot, params.blockType);
-      if (!ok) throw new Error(`Don't have ${params.blockType}`);
+      const ok = await equipItem(bot, blockType);
+      if (!ok) throw new Error(`Don't have ${blockType}`);
 
       await placeAt(bot, pos);
-      return `Placed ${params.blockType} at ${pos.x}, ${pos.y}, ${pos.z}`;
+      return `Placed ${blockType} at ${pos.x}, ${pos.y}, ${pos.z}`;
     },
   },
 
@@ -305,13 +329,15 @@ export const actions = {
     params: {
       position: '"position:x,y,z"',
     },
-    async execute(bot, params) {
-      if (!params.position?.startsWith('position:')) {
+    async execute(bot: Bot, params: Record<string, unknown>): Promise<string> {
+      const position = params.position as string | undefined;
+
+      if (!position?.startsWith('position:')) {
         throw new Error('Position must be in format "position:x,y,z"');
       }
 
-      const coords = params.position.slice(9).split(',').map(Number);
-      const pos = new Vec3(coords[0], coords[1], coords[2]);
+      const coords = position.slice(9).split(',').map(Number);
+      const pos = new Vec3(coords[0]!, coords[1]!, coords[2]!);
 
       await digIfNeeded(bot, pos);
       return `Broke block at ${pos.x}, ${pos.y}, ${pos.z}`;

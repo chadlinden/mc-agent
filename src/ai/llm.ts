@@ -1,18 +1,30 @@
-import { getLlama, LlamaChatSession } from 'node-llama-cpp';
+import { getLlama, LlamaChatSession, Llama, LlamaModel, LlamaContext, LlamaContextSequence } from 'node-llama-cpp';
 import config from '../../config/bot-config.js';
 import { createLogger } from '../utils/logger.js';
+import type { LLMResponse } from '../types/index.js';
 
 const log = createLogger('llm');
 
-let llamaInstance = null;
-let modelInstance = null;
-let contextInstance = null;
-let sequenceInstance = null;
+let llamaInstance: Llama | null = null;
+let modelInstance: LlamaModel | null = null;
+let contextInstance: LlamaContext | null = null;
+let sequenceInstance: LlamaContextSequence | null = null;
+
+interface GenerateOptions {
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+}
+
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
 
 /**
  * Initialize the LLM with GPU acceleration
  */
-export async function initialize() {
+export async function initialize(): Promise<void> {
   if (modelInstance) {
     log.info('LLM already initialized');
     return;
@@ -42,7 +54,8 @@ export async function initialize() {
       contextSize: config.llm.contextSize,
     });
   } catch (err) {
-    log.error('Failed to initialize LLM', { error: err.message });
+    const error = err as Error;
+    log.error('Failed to initialize LLM', { error: error.message });
     throw err;
   }
 }
@@ -51,15 +64,15 @@ export async function initialize() {
  * Generate a response for a single prompt (stateless)
  * Reuses the same context sequence for all requests
  */
-export async function generate(prompt, options = {}) {
-  if (!contextInstance) {
+export async function generate(prompt: string, options: GenerateOptions = {}): Promise<string> {
+  if (!contextInstance || !sequenceInstance) {
     await initialize();
   }
 
   // Create a new session reusing the existing sequence
   // The session will clear history on creation
   const session = new LlamaChatSession({
-    contextSequence: sequenceInstance,
+    contextSequence: sequenceInstance!,
   });
 
   try {
@@ -75,9 +88,9 @@ export async function generate(prompt, options = {}) {
     // Clear the sequence state for the next request
     session.dispose();
     // Erase the sequence to reset it for fresh prompts
-    sequenceInstance.eraseContextTokenRanges([{
+    sequenceInstance!.eraseContextTokenRanges([{
       start: 0,
-      end: sequenceInstance.nextTokenIndex,
+      end: sequenceInstance!.nextTokenIndex,
     }]);
   }
 }
@@ -85,13 +98,13 @@ export async function generate(prompt, options = {}) {
 /**
  * Chat with conversation history (for multi-turn)
  */
-export async function chat(messages, options = {}) {
-  if (!contextInstance) {
+export async function chat(messages: ChatMessage[], options: GenerateOptions = {}): Promise<string> {
+  if (!contextInstance || !sequenceInstance) {
     await initialize();
   }
 
   const session = new LlamaChatSession({
-    contextSequence: sequenceInstance,
+    contextSequence: sequenceInstance!,
   });
 
   try {
@@ -99,11 +112,11 @@ export async function chat(messages, options = {}) {
     let response = '';
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
-      if (msg.role === 'system') {
+      if (msg?.role === 'system') {
         // System messages are prepended to the first user message
         continue;
       }
-      if (msg.role === 'user') {
+      if (msg?.role === 'user') {
         // For the last user message, get the response
         if (i === messages.length - 1) {
           // Prepend system message if exists
@@ -125,9 +138,9 @@ export async function chat(messages, options = {}) {
   } finally {
     // Dispose session and reset sequence for next use
     session.dispose();
-    sequenceInstance.eraseContextTokenRanges([{
+    sequenceInstance!.eraseContextTokenRanges([{
       start: 0,
-      end: sequenceInstance.nextTokenIndex,
+      end: sequenceInstance!.nextTokenIndex,
     }]);
   }
 }
@@ -135,14 +148,15 @@ export async function chat(messages, options = {}) {
 /**
  * Parse JSON from LLM response (with fallback)
  */
-export function parseJsonResponse(response) {
+export function parseJsonResponse(response: string): LLMResponse | null {
   // Try to extract JSON from the response
   const jsonMatch = response.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
-      return JSON.parse(jsonMatch[0]);
+      return JSON.parse(jsonMatch[0]) as LLMResponse;
     } catch (err) {
-      log.warn('Failed to parse JSON from response', { error: err.message });
+      const error = err as Error;
+      log.warn('Failed to parse JSON from response', { error: error.message });
     }
   }
   return null;
@@ -151,7 +165,7 @@ export function parseJsonResponse(response) {
 /**
  * Cleanup resources
  */
-export async function shutdown() {
+export async function shutdown(): Promise<void> {
   // Dispose in reverse order of creation
   if (sequenceInstance) {
     sequenceInstance.dispose();
@@ -171,7 +185,7 @@ export async function shutdown() {
 /**
  * Test the LLM (can be run standalone)
  */
-export async function test(prompt = 'Hello, who are you?') {
+export async function test(prompt: string = 'Hello, who are you?'): Promise<string> {
   await initialize();
   log.info('Testing LLM with prompt:', { prompt });
   const response = await generate(prompt);
