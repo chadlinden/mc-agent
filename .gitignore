@@ -15,6 +15,9 @@ data/
 logs/*.log
 *.log
 
+# Build output
+dist/
+
 # IDE
 .vscode/
 .idea/
