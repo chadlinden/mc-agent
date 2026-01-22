@@ -191,7 +191,9 @@ export class NavigationController {
       switch (true) {
         case blockName.includes('leaves'):
           for (const m in LEAVES) {
-            this.blockHandlers.set(`${m}_leaves`, handler);
+            const keyName = `${LEAVES[m]}_leaves`;
+            log.info(`setting wildcard handler for ${keyName}`);
+            this.blockHandlers.set(keyName, handler);
           }
           break;
         default:
@@ -199,9 +201,8 @@ export class NavigationController {
       }
     } else {
       this.blockHandlers.set(blockName, handler);
+      log.info(`📋 Registered block handler for "${blockName}"`);
     }
-
-    log.info(`📋 Registered block handler for "${blockName}"`);
     this.applyBlockRules();
 
     return this;
@@ -314,6 +315,21 @@ export class NavigationController {
   }
 
   /**
+   * Navigate to a block for interaction (ensures bot is not inside the block)
+   */
+  async gotoBlock(pos: Vec3, options: NavigationOptions = {}): Promise<string> {
+    const range = options.range ?? 3;
+    log.info(`🚶 Navigating to block at (${pos.x}, ${pos.y}, ${pos.z}) for interaction`);
+
+    // GoalLookAtBlock ensures the bot can see the block and is not inside it
+    const goal = new goals.GoalLookAtBlock(pos, this.bot.world, {
+      reach: range,
+      entityHeight: 1.6
+    });
+    return this.executeNavigation(goal, options);
+  }
+
+  /**
    * Navigate to an entity
    * Uses GoalFollow to track entity position dynamically, including y coordinate
    */
@@ -386,7 +402,18 @@ export class NavigationController {
     this.currentGoal = goal;
     this.isNavigating = true;
 
-    log.info('📍 Starting pathfinding...');
+    // Check if we're already at the goal to avoid log spam for micro-movements
+    // Construct a minimal Move-like object for the isEnd check
+    const currentPos = this.bot.entity.position;
+    // @ts-expect-error - isEnd is part of the Pathfinder Goal interface
+    if (goal.isEnd({ x: currentPos.x, y: currentPos.y, z: currentPos.z })) {
+      this.isNavigating = false;
+      this.currentGoal = null;
+      log.debug('Already at destination, skipping pathfinding');
+      return 'Already at destination';
+    }
+
+    log.debug('📍 Starting pathfinding...');
 
     try {
       await Promise.race([
@@ -396,7 +423,7 @@ export class NavigationController {
         ),
       ]);
 
-      log.info('🏁 Arrived at destination!');
+      log.debug('🏁 Arrived at destination!');
       return 'Arrived at destination';
     } catch (err) {
       const error = err as Error;

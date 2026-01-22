@@ -1,4 +1,6 @@
 import type { Bot } from 'mineflayer';
+import vec3Pkg from 'vec3';
+const { Vec3 } = vec3Pkg;
 import { createLogger } from '../utils/logger.js';
 import type { DecisionEngine } from '../ai/decision-engine.js';
 import { getNavigationController } from './navigation-controller.js';
@@ -13,7 +15,7 @@ interface DirectCommands {
 
 /**
  * Built-in commands that bypass the LLM for direct control
- * These are triggered by specific keywords in chat
+ * These are triggered by specific keywords at the start of a message
  */
 const DIRECT_COMMANDS: DirectCommands = {
   // Emergency stop
@@ -55,7 +57,7 @@ const DIRECT_COMMANDS: DirectCommands = {
 
   // Help
   'help': async (bot: Bot): Promise<boolean> => {
-    bot.chat('Commands: stop, resume, status, inventory, help. Or just chat with me!');
+    bot.chat('Commands: stop, resume, status, inventory, goto [x y z], help. Or just chat with me!');
     return true;
   },
 };
@@ -65,7 +67,36 @@ const DIRECT_COMMANDS: DirectCommands = {
  * Returns true if command was handled, false otherwise
  */
 export async function tryDirectCommand(message: string, bot: Bot, decisionEngine: DecisionEngine): Promise<boolean> {
-  const cmd = message.toLowerCase().trim();
+  const normalized = message.toLowerCase().trim();
+  const parts = normalized.split(/\s+/);
+  const cmd = parts[0];
+
+  if (!cmd) return false;
+
+  // Handle commands with arguments
+  if (cmd === 'goto' && parts.length > 1) {
+    const nav = getNavigationController(bot);
+    const args = parts.slice(1).join(' ').replace(/,/g, ' ').split(/\s+/);
+
+    if (args.length === 3) {
+      const x = Number(args[0]);
+      const y = Number(args[1]);
+      const z = Number(args[2]);
+
+      if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+        log.info('Executing direct goto command', { x, y, z });
+        const pos = new Vec3(x, y, z);
+        nav.goto(pos).catch(err => {
+          log.error('Direct goto failed', { error: err.message });
+          bot.chat(`Failed to go to ${x}, ${y}, ${z}: ${err.message}`);
+        });
+        bot.chat(`Navigating to ${x}, ${y}, ${z}...`);
+        return true;
+      }
+    }
+    bot.chat('Invalid goto format. Use: goto x y z');
+    return true;
+  }
 
   const handler = DIRECT_COMMANDS[cmd];
   if (handler) {
